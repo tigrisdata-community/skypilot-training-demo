@@ -1,0 +1,51 @@
+name: tigris-training
+
+resources:
+  accelerators: [T4:1, A100-80GB:1, A100-80GB:8]
+
+workdir: .
+
+envs:
+  AWS_ACCESS_KEY_ID:
+  AWS_SECRET_ACCESS_KEY:
+  AWS_REGION: auto
+  AWS_ENDPOINT_URL_S3: https://fly.storage.tigris.dev
+
+  # customize these in .env
+  BUCKET_NAME: mybucket
+  DATASET_NAME: mlabonne/FineTome-100k
+  MODEL_NAME: Qwen/Qwen2.5-0.5B
+
+setup: |
+  set -x
+  conda install -y python=3.11
+  pip install "datasets[s3]" s3fs unsloth
+
+  wget -O geesefs https://github.com/yandex-cloud/geesefs/releases/download/v0.42.1/geesefs-linux-amd64
+  chmod +x geesefs && sudo mv geesefs /usr/local/bin/geesefs || chmod +x geesefs && mv geesefs /usr/local/bin/geesefs
+
+  mkdir -p ~/.aws
+
+  cat << EOF > ~/.aws/config
+  [default]
+  region = auto
+  output = json
+  endpoint_url = https://fly.storage.tigris.dev
+  EOF
+
+  cat << EOF > ~/.aws/credentials
+  [default]
+  aws_access_key_id = ${AWS_ACCESS_KEY_ID}
+  aws_secret_access_key = ${AWS_SECRET_ACCESS_KEY}
+  EOF
+
+  mkdir -p ~/.local/share/systemd/user
+  mkdir -p ~/tigris
+
+run: |
+  /usr/local/bin/geesefs --endpoint https://fly.storage.tigris.dev --memory-limit 8192 --read-ahead-large 65536 --read-ahead-parallel 4096 --max-flushers 32 --max-parallel-parts 32 --part-sizes 32 ${BUCKET_NAME} ${HOME}/tigris
+
+  python import.py
+  python import-model.py
+  python pretokenize.py
+  python dotrain.py
