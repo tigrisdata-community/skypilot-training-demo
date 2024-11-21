@@ -55,7 +55,7 @@ with fs.open(f"s3://{bucket_name}/raw/{dataset_name}/info.json") as fin:
     data = json.load(fin)
     biggest = data["count"]
 
-assert biggest != -1
+assert biggest != -1, "No dataset info found, have you run import-dataset.py?"
 
 def formatting_prompts_func(examples):
     convos = examples["conversations"]

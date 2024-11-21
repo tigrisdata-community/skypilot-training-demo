@@ -1,9 +1,14 @@
-name: tigris-training
+# service.yaml
+service:
+  readiness_probe:
+    path: /v1/models
+    initial_delay_seconds: 5 # be sure to keep this low, or you will burn compute doing nothing
+  replicas: 2
 
+# Fields below describe each replica.
 resources:
-  accelerators: [T4:1, A100-80GB:1, A100-80GB:8]
-
-workdir: .
+  ports: 8080
+  accelerators: [T4:1, L4:8, A10g:8, A100:1, A10g:1, A100:4, A100:8, A100-80GB:2, A100-80GB:4, A100-80GB:8]
 
 envs:
   AWS_ACCESS_KEY_ID:
@@ -17,9 +22,9 @@ envs:
   MODEL_NAME: Qwen/Qwen2.5-0.5B
 
 setup: |
-  set -x
-  conda install -y python=3.11
-  pip install "datasets[s3]" s3fs unsloth
+  conda create -n vllm python=3.9 -y
+  conda activate vllm
+  pip install vllm
 
   wget -O geesefs https://github.com/yandex-cloud/geesefs/releases/download/v0.42.1/geesefs-linux-amd64
   chmod +x geesefs && sudo mv geesefs /usr/local/bin/geesefs || chmod +x geesefs && mv geesefs /usr/local/bin/geesefs
@@ -45,7 +50,8 @@ setup: |
 run: |
   /usr/local/bin/geesefs --endpoint https://fly.storage.tigris.dev --memory-limit 8192 --read-ahead-large 65536 --read-ahead-parallel 4096 --max-flushers 32 --max-parallel-parts 32 --part-sizes 32 ${BUCKET_NAME} ${HOME}/tigris
 
-  python import-dataset.py
-  python import-model.py
-  python pretokenize.py
-  python dotrain.py
+  conda activate vllm
+  python -m vllm.entrypoints.openai.api_server \
+    --tensor-parallel-size $SKYPILOT_NUM_GPUS_PER_NODE \
+    --host 0.0.0.0 --port 8080 \
+    --model ${HOME}/tigris/${MODEL_NAME}/${DATASET_NAME}/fused

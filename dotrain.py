@@ -51,15 +51,16 @@ tokenizer = get_chat_template(
 
 fs = s3fs.S3FileSystem(**storage_options)
 
+# Make a LoRA model stacked on top of the base model, this is what we train and
+# save for later use.
 model = FastLanguageModel.get_peft_model(
     model,
     r = 16, # Choose any number > 0 ! Suggested 8, 16, 32, 64, 128
     target_modules = ["q_proj", "k_proj", "v_proj", "o_proj",
                       "gate_proj", "up_proj", "down_proj",],
     lora_alpha = 16,
-    lora_dropout = 0, # Supports any, but = 0 is optimized
-    bias = "none",    # Supports any, but = "none" is optimized
-    # [NEW] "unsloth" uses 30% less VRAM, fits 2x larger batch sizes!
+    lora_dropout = 0,                       # Supports any, but = 0 is optimized
+    bias = "none",                          # Supports any, but = "none" is optimized
     use_gradient_checkpointing = "unsloth", # True or "unsloth" for very long context
     random_state = 3407,
     use_rslora = False,  # We support rank stabilized LoRA
@@ -125,3 +126,6 @@ for dataset in dataset_generator(bucket_name, model_name, dataset_name, storage_
 
 model.save_pretrained(f"{home_dir}/tigris/done/{model_name}/{dataset_name}/lora_model")
 tokenizer.save_pretrained(f"{home_dir}/tigris/done/{model_name}/{dataset_name}/lora_model")
+
+# Save fused model for inference with vllm
+model.save_pretrained_merged(f"{home_dir}/tigris/done/{model_name}/{dataset_name}/fused", tokenizer, save_method="merged_16bit")
